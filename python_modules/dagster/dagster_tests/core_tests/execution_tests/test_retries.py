@@ -25,7 +25,7 @@ from dagster.core.test_utils import instance_for_test
 executors = pytest.mark.parametrize(
     "environment",
     [
-        {"storage": {"filesystem": {}}},
+        #        {"storage": {"filesystem": {}}},
         {"storage": {"filesystem": {}}, "execution": {"multiprocess": {}}},
     ],
 )
@@ -218,29 +218,33 @@ def define_retry_wait_fixed_pipeline():
 
 @executors
 def test_step_retry_fixed_wait(environment):
-    with instance_for_test() as instance:
-        with seven.TemporaryDirectory() as tempdir:
-            env = dict(environment)
-            env["solids"] = {"fail_first_and_wait": {"config": tempdir}}
+    for trial in range(150):
+        import sys
 
-            event_iter = execute_pipeline_iterator(
-                reconstructable(define_retry_wait_fixed_pipeline),
-                run_config=env,
-                instance=instance,
-            )
-            start_wait = None
-            end_wait = None
-            success = None
-            for event in event_iter:
-                if event.is_step_up_for_retry:
-                    start_wait = time.time()
-                if event.is_step_restarted:
-                    end_wait = time.time()
-                if event.is_pipeline_success:
-                    success = True
+        sys.stderr.write("TRIAL: " + str(trial) + "\n")
+        with instance_for_test() as instance:
+            with seven.TemporaryDirectory() as tempdir:
+                env = dict(environment)
+                env["solids"] = {"fail_first_and_wait": {"config": tempdir}}
 
-            assert success
-            assert start_wait is not None
-            assert end_wait is not None
-            delay = end_wait - start_wait
-            assert delay > DELAY
+                event_iter = execute_pipeline_iterator(
+                    reconstructable(define_retry_wait_fixed_pipeline),
+                    run_config=env,
+                    instance=instance,
+                )
+                start_wait = None
+                end_wait = None
+                success = None
+                for event in event_iter:
+                    if event.is_step_up_for_retry:
+                        start_wait = time.time()
+                    if event.is_step_restarted:
+                        end_wait = time.time()
+                    if event.is_pipeline_success:
+                        success = True
+
+                assert success
+                assert start_wait is not None
+                assert end_wait is not None
+                delay = end_wait - start_wait
+                assert delay > DELAY
