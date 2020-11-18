@@ -174,24 +174,26 @@ def _check_event_log_contains(event_log, expected_type_and_message):
     "run_config", run_configs(),
 )
 def test_successful_run(get_external_pipeline, run_config):  # pylint: disable=redefined-outer-name
-    with instance_for_test() as instance:
-        pipeline_run = instance.create_run_for_pipeline(
-            pipeline_def=noop_pipeline, run_config=run_config
-        )
+    for trial in range(10):
+        print("TRIAL: " + repr(trial))
+        with instance_for_test() as instance:
+            pipeline_run = instance.create_run_for_pipeline(
+                pipeline_def=noop_pipeline, run_config=run_config
+            )
 
-        with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
-            run_id = pipeline_run.run_id
+            with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
+                run_id = pipeline_run.run_id
 
-            assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
+                assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
 
-            instance.launch_run(run_id=pipeline_run.run_id, external_pipeline=external_pipeline)
+                instance.launch_run(run_id=pipeline_run.run_id, external_pipeline=external_pipeline)
 
-            pipeline_run = instance.get_run_by_id(run_id)
-            assert pipeline_run
-            assert pipeline_run.run_id == run_id
+                pipeline_run = instance.get_run_by_id(run_id)
+                assert pipeline_run
+                assert pipeline_run.run_id == run_id
 
-            pipeline_run = poll_for_finished_run(instance, run_id)
-            assert pipeline_run.status == PipelineRunStatus.SUCCESS
+                pipeline_run = poll_for_finished_run(instance, run_id)
+                assert pipeline_run.status == PipelineRunStatus.SUCCESS
 
 
 @pytest.mark.parametrize(
@@ -202,41 +204,43 @@ def test_successful_run(get_external_pipeline, run_config):  # pylint: disable=r
     ],
 )
 def test_invalid_instance_run(get_external_pipeline):
-    with seven.TemporaryDirectory() as temp_dir:
-        correct_run_storage_dir = os.path.join(temp_dir, "history", "")
-        wrong_run_storage_dir = os.path.join(temp_dir, "wrong", "")
+    for trial in range(10):
+        print("TRIAL: " + repr(trial))
+        with seven.TemporaryDirectory() as temp_dir:
+            correct_run_storage_dir = os.path.join(temp_dir, "history", "")
+            wrong_run_storage_dir = os.path.join(temp_dir, "wrong", "")
 
-        with environ({"RUN_STORAGE_ENV": correct_run_storage_dir}):
-            with instance_for_test_tempdir(
-                temp_dir,
-                overrides={
-                    "run_storage": {
-                        "module": "dagster.core.storage.runs",
-                        "class": "SqliteRunStorage",
-                        "config": {"base_dir": {"env": "RUN_STORAGE_ENV"}},
-                    }
-                },
-            ) as instance:
-                pipeline_run = instance.create_run_for_pipeline(pipeline_def=noop_pipeline,)
+            with environ({"RUN_STORAGE_ENV": correct_run_storage_dir}):
+                with instance_for_test_tempdir(
+                    temp_dir,
+                    overrides={
+                        "run_storage": {
+                            "module": "dagster.core.storage.runs",
+                            "class": "SqliteRunStorage",
+                            "config": {"base_dir": {"env": "RUN_STORAGE_ENV"}},
+                        }
+                    },
+                ) as instance:
+                    pipeline_run = instance.create_run_for_pipeline(pipeline_def=noop_pipeline,)
 
-                # Server won't be able to load the run from run storage
-                with environ({"RUN_STORAGE_ENV": wrong_run_storage_dir}):
-                    with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
+                    # Server won't be able to load the run from run storage
+                    with environ({"RUN_STORAGE_ENV": wrong_run_storage_dir}):
+                        with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
 
-                        with pytest.raises(
-                            DagsterLaunchFailedError,
-                            match=re.escape(
-                                "gRPC server could not load run {run_id} in order to execute it".format(
-                                    run_id=pipeline_run.run_id
+                            with pytest.raises(
+                                DagsterLaunchFailedError,
+                                match=re.escape(
+                                    "gRPC server could not load run {run_id} in order to execute it".format(
+                                        run_id=pipeline_run.run_id
+                                    )
+                                ),
+                            ):
+                                instance.launch_run(
+                                    run_id=pipeline_run.run_id, external_pipeline=external_pipeline,
                                 )
-                            ),
-                        ):
-                            instance.launch_run(
-                                run_id=pipeline_run.run_id, external_pipeline=external_pipeline,
-                            )
 
-                        failed_run = instance.get_run_by_id(pipeline_run.run_id)
-                        assert failed_run.status == PipelineRunStatus.FAILURE
+                            failed_run = instance.get_run_by_id(pipeline_run.run_id)
+                            assert failed_run.status == PipelineRunStatus.FAILURE
 
 
 @pytest.mark.parametrize(
@@ -301,62 +305,67 @@ def test_crashy_run(get_external_pipeline, run_config):  # pylint: disable=redef
     "run_config", run_configs(),
 )
 def test_terminated_run(get_external_pipeline, run_config):  # pylint: disable=redefined-outer-name
-    with instance_for_test() as instance:
-        pipeline_run = instance.create_run_for_pipeline(
-            pipeline_def=sleepy_pipeline, run_config=run_config,
-        )
-
-        with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
-            run_id = pipeline_run.run_id
-
-            assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
-
-            instance.launch_run(pipeline_run.run_id, external_pipeline)
-
-            poll_for_step_start(instance, run_id)
-
-            launcher = instance.run_launcher
-            assert launcher.can_terminate(run_id)
-            assert launcher.terminate(run_id)
-
-            terminated_pipeline_run = poll_for_finished_run(instance, run_id, timeout=30)
-            terminated_pipeline_run = instance.get_run_by_id(run_id)
-            assert terminated_pipeline_run.status == PipelineRunStatus.FAILURE
-
-            poll_for_event(
-                instance, run_id, event_type="ENGINE_EVENT", message="Process for pipeline exited",
+    for trial in range(10):
+        print("TRIAL: " + repr(trial))
+        with instance_for_test() as instance:
+            pipeline_run = instance.create_run_for_pipeline(
+                pipeline_def=sleepy_pipeline, run_config=run_config,
             )
 
-            run_logs = instance.all_logs(run_id)
+            with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
+                run_id = pipeline_run.run_id
 
-            if _is_multiprocess(run_config):
-                _check_event_log_contains(
-                    run_logs,
-                    [
-                        ("ENGINE_EVENT", "Received pipeline termination request"),
-                        (
-                            "ENGINE_EVENT",
-                            "Multiprocess executor: received termination signal - forwarding to active child process",
-                        ),
-                        ("STEP_FAILURE", 'Execution of step "sleepy_solid.compute" failed.'),
-                        (
-                            "PIPELINE_FAILURE",
-                            'Execution of pipeline "sleepy_pipeline" failed. An exception was thrown during execution.',
-                        ),
-                        ("ENGINE_EVENT", "Process for pipeline exited"),
-                    ],
+                assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
+
+                instance.launch_run(pipeline_run.run_id, external_pipeline)
+
+                poll_for_step_start(instance, run_id)
+
+                launcher = instance.run_launcher
+                assert launcher.can_terminate(run_id)
+                assert launcher.terminate(run_id)
+
+                terminated_pipeline_run = poll_for_finished_run(instance, run_id, timeout=30)
+                terminated_pipeline_run = instance.get_run_by_id(run_id)
+                assert terminated_pipeline_run.status == PipelineRunStatus.FAILURE
+
+                poll_for_event(
+                    instance,
+                    run_id,
+                    event_type="ENGINE_EVENT",
+                    message="Process for pipeline exited",
                 )
-            else:
-                _check_event_log_contains(
-                    run_logs,
-                    [
-                        ("ENGINE_EVENT", "Received pipeline termination request"),
-                        ("STEP_FAILURE", 'Execution of step "sleepy_solid.compute" failed.'),
-                        ("PIPELINE_FAILURE", 'Execution of pipeline "sleepy_pipeline" failed.'),
-                        ("ENGINE_EVENT", "Pipeline execution terminated by interrupt"),
-                        ("ENGINE_EVENT", "Process for pipeline exited"),
-                    ],
-                )
+
+                run_logs = instance.all_logs(run_id)
+
+                if _is_multiprocess(run_config):
+                    _check_event_log_contains(
+                        run_logs,
+                        [
+                            ("ENGINE_EVENT", "Received pipeline termination request"),
+                            (
+                                "ENGINE_EVENT",
+                                "Multiprocess executor: received termination signal - forwarding to active child process",
+                            ),
+                            ("STEP_FAILURE", 'Execution of step "sleepy_solid.compute" failed.'),
+                            (
+                                "PIPELINE_FAILURE",
+                                'Execution of pipeline "sleepy_pipeline" failed. An exception was thrown during execution.',
+                            ),
+                            ("ENGINE_EVENT", "Process for pipeline exited"),
+                        ],
+                    )
+                else:
+                    _check_event_log_contains(
+                        run_logs,
+                        [
+                            ("ENGINE_EVENT", "Received pipeline termination request"),
+                            ("STEP_FAILURE", 'Execution of step "sleepy_solid.compute" failed.'),
+                            ("PIPELINE_FAILURE", 'Execution of pipeline "sleepy_pipeline" failed.'),
+                            ("ENGINE_EVENT", "Pipeline execution terminated by interrupt"),
+                            ("ENGINE_EVENT", "Process for pipeline exited"),
+                        ],
+                    )
 
 
 def _get_engine_events(event_records):
@@ -395,25 +404,27 @@ def _message_exists(event_records, message_text):
 def test_single_solid_selection_execution(
     get_external_pipeline, run_config,
 ):  # pylint: disable=redefined-outer-name
-    with instance_for_test() as instance:
-        pipeline_run = instance.create_run_for_pipeline(
-            pipeline_def=math_diamond, run_config=run_config, solids_to_execute={"return_one"}
-        )
-        run_id = pipeline_run.run_id
+    for trial in range(10):
+        print("TRIAL: " + repr(trial))
+        with instance_for_test() as instance:
+            pipeline_run = instance.create_run_for_pipeline(
+                pipeline_def=math_diamond, run_config=run_config, solids_to_execute={"return_one"}
+            )
+            run_id = pipeline_run.run_id
 
-        assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
+            assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
 
-        with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
-            instance.launch_run(pipeline_run.run_id, external_pipeline)
-            finished_pipeline_run = poll_for_finished_run(instance, run_id)
+            with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
+                instance.launch_run(pipeline_run.run_id, external_pipeline)
+                finished_pipeline_run = poll_for_finished_run(instance, run_id)
 
-            event_records = instance.all_logs(run_id)
+                event_records = instance.all_logs(run_id)
 
-            assert finished_pipeline_run
-            assert finished_pipeline_run.run_id == run_id
-            assert finished_pipeline_run.status == PipelineRunStatus.SUCCESS
+                assert finished_pipeline_run
+                assert finished_pipeline_run.run_id == run_id
+                assert finished_pipeline_run.status == PipelineRunStatus.SUCCESS
 
-            assert _get_successful_step_keys(event_records) == {"return_one.compute"}
+                assert _get_successful_step_keys(event_records) == {"return_one.compute"}
 
 
 @pytest.mark.parametrize(
@@ -429,30 +440,32 @@ def test_single_solid_selection_execution(
 def test_multi_solid_selection_execution(
     get_external_pipeline, run_config,
 ):  # pylint: disable=redefined-outer-name
-    with instance_for_test() as instance:
-        pipeline_run = instance.create_run_for_pipeline(
-            pipeline_def=math_diamond,
-            run_config=run_config,
-            solids_to_execute={"return_one", "multiply_by_2"},
-        )
-        run_id = pipeline_run.run_id
+    for trial in range(10):
+        print("TRIAL: " + repr(trial))
+        with instance_for_test() as instance:
+            pipeline_run = instance.create_run_for_pipeline(
+                pipeline_def=math_diamond,
+                run_config=run_config,
+                solids_to_execute={"return_one", "multiply_by_2"},
+            )
+            run_id = pipeline_run.run_id
 
-        assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
+            assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
 
-        with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
-            instance.launch_run(pipeline_run.run_id, external_pipeline)
-            finished_pipeline_run = poll_for_finished_run(instance, run_id)
+            with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
+                instance.launch_run(pipeline_run.run_id, external_pipeline)
+                finished_pipeline_run = poll_for_finished_run(instance, run_id)
 
-            event_records = instance.all_logs(run_id)
+                event_records = instance.all_logs(run_id)
 
-            assert finished_pipeline_run
-            assert finished_pipeline_run.run_id == run_id
-            assert finished_pipeline_run.status == PipelineRunStatus.SUCCESS
+                assert finished_pipeline_run
+                assert finished_pipeline_run.run_id == run_id
+                assert finished_pipeline_run.status == PipelineRunStatus.SUCCESS
 
-            assert _get_successful_step_keys(event_records) == {
-                "return_one.compute",
-                "multiply_by_2.compute",
-            }
+                assert _get_successful_step_keys(event_records) == {
+                    "return_one.compute",
+                    "multiply_by_2.compute",
+                }
 
 
 @pytest.mark.parametrize(
@@ -466,71 +479,76 @@ def test_multi_solid_selection_execution(
     "run_config", run_configs(),
 )
 def test_engine_events(get_external_pipeline, run_config):  # pylint: disable=redefined-outer-name
-    with instance_for_test() as instance:
-        pipeline_run = instance.create_run_for_pipeline(
-            pipeline_def=math_diamond, run_config=run_config
-        )
-        run_id = pipeline_run.run_id
-
-        assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
-
-        with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
-            instance.launch_run(pipeline_run.run_id, external_pipeline)
-            finished_pipeline_run = poll_for_finished_run(instance, run_id)
-
-            assert finished_pipeline_run
-            assert finished_pipeline_run.run_id == run_id
-            assert finished_pipeline_run.status == PipelineRunStatus.SUCCESS
-
-            poll_for_event(
-                instance, run_id, event_type="ENGINE_EVENT", message="Process for pipeline exited"
+    for trial in range(10):
+        print("TRIAL: " + repr(trial))
+        with instance_for_test() as instance:
+            pipeline_run = instance.create_run_for_pipeline(
+                pipeline_def=math_diamond, run_config=run_config
             )
-            event_records = instance.all_logs(run_id)
+            run_id = pipeline_run.run_id
 
-            engine_events = _get_engine_events(event_records)
+            assert instance.get_run_by_id(run_id).status == PipelineRunStatus.NOT_STARTED
 
-            if _is_multiprocess(run_config):
-                messages = [
-                    "Started process for pipeline",
-                    "Starting initialization of resources",
-                    "Finished initialization of resources",
-                    "Executing steps using multiprocess executor",
-                    "Launching subprocess for return_one.compute",
-                    "Executing step return_one.compute in subprocess",
-                    "Starting initialization of resources",
-                    "Finished initialization of resources",
-                    # multiply_by_2 and multiply_by_3 launch and execute in non-deterministic order
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "Launching subprocess for add.compute",
-                    "Executing step add.compute in subprocess",
-                    "Starting initialization of resources",
-                    "Finished initialization of resources",
-                    "Multiprocess executor: parent process exiting",
-                    "Process for pipeline exited",
-                ]
-            else:
-                messages = [
-                    "Started process for pipeline",
-                    "Starting initialization of resources",
-                    "Finished initialization of resources",
-                    "Executing steps in process",
-                    "Finished steps in process",
-                    "Process for pipeline exited",
-                ]
+            with get_external_pipeline(pipeline_run.pipeline_name) as external_pipeline:
+                instance.launch_run(pipeline_run.run_id, external_pipeline)
+                finished_pipeline_run = poll_for_finished_run(instance, run_id)
 
-            events_iter = iter(engine_events)
-            assert len(engine_events) == len(messages)
+                assert finished_pipeline_run
+                assert finished_pipeline_run.run_id == run_id
+                assert finished_pipeline_run.status == PipelineRunStatus.SUCCESS
 
-            for message in messages:
-                next_log = next(events_iter)
-                assert message in next_log.message
+                poll_for_event(
+                    instance,
+                    run_id,
+                    event_type="ENGINE_EVENT",
+                    message="Process for pipeline exited",
+                )
+                event_records = instance.all_logs(run_id)
+
+                engine_events = _get_engine_events(event_records)
+
+                if _is_multiprocess(run_config):
+                    messages = [
+                        "Started process for pipeline",
+                        "Starting initialization of resources",
+                        "Finished initialization of resources",
+                        "Executing steps using multiprocess executor",
+                        "Launching subprocess for return_one.compute",
+                        "Executing step return_one.compute in subprocess",
+                        "Starting initialization of resources",
+                        "Finished initialization of resources",
+                        # multiply_by_2 and multiply_by_3 launch and execute in non-deterministic order
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "Launching subprocess for add.compute",
+                        "Executing step add.compute in subprocess",
+                        "Starting initialization of resources",
+                        "Finished initialization of resources",
+                        "Multiprocess executor: parent process exiting",
+                        "Process for pipeline exited",
+                    ]
+                else:
+                    messages = [
+                        "Started process for pipeline",
+                        "Starting initialization of resources",
+                        "Finished initialization of resources",
+                        "Executing steps in process",
+                        "Finished steps in process",
+                        "Process for pipeline exited",
+                    ]
+
+                events_iter = iter(engine_events)
+                assert len(engine_events) == len(messages)
+
+                for message in messages:
+                    next_log = next(events_iter)
+                    assert message in next_log.message
 
 
 def test_not_initialized():  # pylint: disable=redefined-outer-name

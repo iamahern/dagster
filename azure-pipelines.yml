@@ -7,8 +7,6 @@ parameters:
   - name: py3_env_suffixes
     type: object
     default:
-      - api_tests
-      - cli_tests
       - core_tests
 jobs:
   - job: "dagster"
